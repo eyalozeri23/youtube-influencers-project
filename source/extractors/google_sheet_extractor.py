@@ -23,10 +23,8 @@ def extract_google_sheet_data():
             
         df = pd.DataFrame(values[1:], columns=values[0])
         
-        # Save to temporary CSV
-        temp_path = '/tmp/google_sheet_data.csv'
-        df.to_csv(temp_path, index=False)
-        return temp_path
+
+        return df
         
     except Exception as e:
         raise Exception(f"Error extracting data from Google Sheet: {str(e)}")

@@ -72,7 +72,7 @@ The DAG is set to run daily and will execute the `run()` function from `source/m
 - `source/`: Contains the main Python modules
 - `config/`: Contains configuration files
 - `logs/`: Directory for log files
-- `airflow/dags/`: Contains the Airflow DAG definition
+- `dags/`: Contains the Airflow DAG definition
 - `tests/`: Contains unit tests (to be implemented)
 
 

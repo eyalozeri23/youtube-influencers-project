@@ -7,10 +7,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 def load_to_snowflake(df):
-    
     try:
-        
-        
         conn = connect(
             account=os.getenv('SNOWFLAKE_ACCOUNT'),
             user=os.getenv('SNOWFLAKE_USER'),
@@ -21,7 +18,6 @@ def load_to_snowflake(df):
         )
         
         cursor = conn.cursor()
-
         # Create table if not exists
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS INFLUENCER_CAMPAIGN_METRICS (
@@ -30,15 +26,14 @@ def load_to_snowflake(df):
             Campaign_name STRING,
             publish_date DATE,
             current_likes_count INTEGER,
-            interval_date DATE
+            interval_date DATE,
+            last_updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
         )
         """)
-
     
         # Update interval_date
         df['interval_date'] = datetime.now().date()
         
-
         # Create staging table for new data
         cursor.execute("""
         CREATE OR REPLACE TEMPORARY TABLE TEMP_METRICS (
@@ -52,21 +47,21 @@ def load_to_snowflake(df):
         """)
 
         # Insert data into staging table
-        insert_sql = """
-        INSERT INTO TEMP_METRICS (
-            Influencer_Name, Video_Url, Campaign_name,
-            publish_date, current_likes_count, interval_date
-        )
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        
-        data_tuples = [
-            (row['Influencer_Name'], row['Video_Url'], row['Campaign_name'],
-             row['publish_date'], row['current_likes_count'], row['interval_date'])
-            for _, row in df.iterrows()
-        ]
-        
-        cursor.executemany(insert_sql, data_tuples)
+        for _, row in df.iterrows():
+            cursor.execute("""
+            INSERT INTO TEMP_METRICS (
+                Influencer_Name, Video_Url, Campaign_name,
+                publish_date, current_likes_count, interval_date
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                row['Influencer_Name'],
+                row['Video_Url'],
+                row['Campaign_name'],
+                row['publish_date'],
+                row['current_likes_count'],
+                row['interval_date']
+            ))
 
         # Perform merge operation
         merge_sql = """
@@ -77,7 +72,7 @@ def load_to_snowflake(df):
         WHEN MATCHED THEN
             UPDATE SET
                 current_likes_count = source.current_likes_count,
-                interval_date = CURRENT_TIMESTAMP()
+                last_updated_at = CURRENT_TIMESTAMP()
         WHEN NOT MATCHED THEN
             INSERT (
                 Influencer_Name, Video_Url, Campaign_name,
@@ -109,8 +104,7 @@ def load_to_snowflake(df):
         logging.info(f"- Total records in table: {total_records}")
         logging.info(f"- Updated/Inserted records: {updated_records}")
 
-    conn.commit()
-
+        conn.commit()
         
     except Exception as e:
         if conn:

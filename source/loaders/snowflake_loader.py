@@ -7,7 +7,17 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 def load_to_snowflake(df):
+    conn = None
+    cursor = None
+    
     try:
+        # Validate input DataFrame
+        required_columns = ['Influencer_Name', 'Video_Url', 'Campaign_name', 
+                          'publish_date', 'current_likes_count']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {missing_columns}")
+
         conn = connect(
             account=os.getenv('SNOWFLAKE_ACCOUNT'),
             user=os.getenv('SNOWFLAKE_USER'),
@@ -18,6 +28,7 @@ def load_to_snowflake(df):
         )
         
         cursor = conn.cursor()
+
         # Create table if not exists
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS INFLUENCER_CAMPAIGN_METRICS (
@@ -26,15 +37,15 @@ def load_to_snowflake(df):
             Campaign_name STRING,
             publish_date DATE,
             current_likes_count INTEGER,
-            interval_date DATE
-
+            interval_date DATE,
+            last_updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
         )
         """)
     
         # Update interval_date
         df['interval_date'] = datetime.now().date()
         
-        # Create staging table for new data
+        # Create staging table
         cursor.execute("""
         CREATE OR REPLACE TEMPORARY TABLE TEMP_METRICS (
             Influencer_Name STRING,
@@ -42,28 +53,30 @@ def load_to_snowflake(df):
             Campaign_name STRING,
             publish_date DATE,
             current_likes_count INTEGER,
-            interval_date DATE
+            interval_date DATE,
+            last_updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
         )
         """)
 
-        # Insert data into staging table
-        for _, row in df.iterrows():
-            cursor.execute("""
-            INSERT INTO TEMP_METRICS (
-                Influencer_Name, Video_Url, Campaign_name,
-                publish_date, current_likes_count, interval_date
-            )
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """, (
-                row['Influencer_Name'],
-                row['Video_Url'],
-                row['Campaign_name'],
-                row['publish_date'],
-                row['current_likes_count'],
-                row['interval_date']
-            ))
+        # Insert data using executemany
+        insert_sql = """
+        INSERT INTO TEMP_METRICS (
+            Influencer_Name, Video_Url, Campaign_name,
+            publish_date, current_likes_count, interval_date
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        
+        data_tuples = [
+            (row['Influencer_Name'], row['Video_Url'], row['Campaign_name'],
+             row['publish_date'], row['current_likes_count'], row['interval_date'])
+            for _, row in df.iterrows()
+        ]
+        
+        cursor.executemany(insert_sql, data_tuples)
+        logging.info(f"Inserted {len(data_tuples)} records into staging table")
 
-        # Perform merge operation
+        # Perform merge
         merge_sql = """
         MERGE INTO INFLUENCER_CAMPAIGN_METRICS target
         USING TEMP_METRICS source
@@ -88,8 +101,9 @@ def load_to_snowflake(df):
             )
         """
         cursor.execute(merge_sql)
+        logging.info("Merge operation completed")
 
-        # Log the results
+        # Get results
         cursor.execute("""
         SELECT 
             COUNT(*) as total_records,
@@ -105,10 +119,12 @@ def load_to_snowflake(df):
         logging.info(f"- Updated/Inserted records: {updated_records}")
 
         conn.commit()
+        logging.info("Changes committed successfully")
         
     except Exception as e:
         if conn:
             conn.rollback()
+            logging.error("Transaction rolled back")
         raise Exception(f"Error loading data to Snowflake: {str(e)}")
     
     finally:
@@ -116,3 +132,4 @@ def load_to_snowflake(df):
             cursor.close()
         if conn:
             conn.close()
+        logging.info("Database connection closed")

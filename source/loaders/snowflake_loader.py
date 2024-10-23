@@ -35,7 +35,7 @@ def load_to_snowflake(input_path):
         """)
 
     
-        # Add interval_date to DataFrame
+        # Update interval_date
         df['interval_date'] = datetime.now().date()
         
 

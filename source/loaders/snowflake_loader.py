@@ -6,10 +6,10 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-def load_to_snowflake(input_path):
+def load_to_snowflake(df):
     
     try:
-        df = pd.read_csv(input_path)
+        
         
         conn = connect(
             account=os.getenv('SNOWFLAKE_ACCOUNT'),
@@ -108,6 +108,8 @@ def load_to_snowflake(input_path):
         logging.info(f"Processed {len(df)} records:")
         logging.info(f"- Total records in table: {total_records}")
         logging.info(f"- Updated/Inserted records: {updated_records}")
+
+    conn.commit()
 
         
     except Exception as e:

@@ -37,8 +37,7 @@ def load_to_snowflake(df):
             Campaign_name STRING,
             publish_date DATE,
             current_likes_count INTEGER,
-            interval_date DATE,
-            last_updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+            interval_date DATE
         )
         """)
     
